@@ -282,7 +282,7 @@ export const DossierManagement = ({ data, onUpdate, fileName }: DossierManagemen
               </div>
               <div>
                 <Label>Área</Label>
-                <Select value={area} onValueChange={(v: any) => setArea(v)}>
+                <Select value={area} onValueChange={(v) => setArea(v as ConfidentialCase["area"])}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Corporativo / Societário">Corporativo / Societário</SelectItem>
@@ -295,7 +295,7 @@ export const DossierManagement = ({ data, onUpdate, fileName }: DossierManagemen
               </div>
               <div>
                 <Label>Status</Label>
-                <Select value={status} onValueChange={(v: any) => setStatus(v)}>
+                <Select value={status} onValueChange={(v) => setStatus(v as ConfidentialCase["status"])}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Em Investigação">Em Investigação</SelectItem>
@@ -366,7 +366,7 @@ export const DossierManagement = ({ data, onUpdate, fileName }: DossierManagemen
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <Input placeholder="Codinome (ex: Garganta Profunda)" value={wCodinome} onChange={(e) => setWCodinome(e.target.value)} className="text-xs" />
                   <Input placeholder="Nome Real (opcional)" value={wNomeReal} onChange={(e) => setWNomeReal(e.target.value)} className="text-xs" />
-                  <Select value={String(wConfiabilidade)} onValueChange={(v) => setWConfiabilidade(Number(v) as any)}>
+                  <Select value={String(wConfiabilidade)} onValueChange={(v) => setWConfiabilidade(Number(v) as 1 | 2 | 3 | 4 | 5)}>
                     <SelectTrigger className="text-xs"><SelectValue placeholder="Confiabilidade" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="5">5/5 - Altíssima</SelectItem>
@@ -376,7 +376,7 @@ export const DossierManagement = ({ data, onUpdate, fileName }: DossierManagemen
                       <SelectItem value="1">1/5 - Hostil</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Select value={wDisposto} onValueChange={(v: any) => setWDisposto(v)}>
+                  <Select value={wDisposto} onValueChange={(v) => setWDisposto(v as WitnessOrSource["dispostoADepor"])}>
                     <SelectTrigger className="text-xs"><SelectValue placeholder="Disposição" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="Apenas Sob Sigilo">Apenas Sob Sigilo</SelectItem>

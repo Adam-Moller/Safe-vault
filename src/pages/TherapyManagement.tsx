@@ -291,7 +291,7 @@ export const TherapyManagement = ({ data, onUpdate, fileName }: TherapyManagemen
               </div>
               <div>
                 <Label>Status</Label>
-                <Select value={status} onValueChange={(v: any) => setStatus(v)}>
+                <Select value={status} onValueChange={(v) => setStatus(v as PatientProfile["status"])}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Ativo">Ativo</SelectItem>
@@ -303,7 +303,7 @@ export const TherapyManagement = ({ data, onUpdate, fileName }: TherapyManagemen
               </div>
               <div>
                 <Label>Frequência</Label>
-                <Select value={frequencia} onValueChange={(v: any) => setFrequencia(v)}>
+                <Select value={frequencia} onValueChange={(v) => setFrequencia(v as PatientProfile["frequencia"])}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Semanal">Semanal</SelectItem>

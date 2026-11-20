@@ -330,7 +330,7 @@ export const TalentManagement = ({ data, onUpdate, fileName }: TalentManagementP
               </div>
               <div>
                 <Label>Senioridade</Label>
-                <Select value={senioridade} onValueChange={(v: any) => setSenioridade(v)}>
+                <Select value={senioridade} onValueChange={(v) => setSenioridade(v as ExecutiveTalent["senioridade"])}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="C-Level">C-Level (CEO, CTO, CFO, etc.)</SelectItem>
@@ -364,7 +364,7 @@ export const TalentManagement = ({ data, onUpdate, fileName }: TalentManagementP
               </div>
               <div>
                 <Label>Disponibilidade</Label>
-                <Select value={disponibilidadeMudanca} onValueChange={(v: any) => setDisponibilidadeMudanca(v)}>
+                <Select value={disponibilidadeMudanca} onValueChange={(v) => setDisponibilidadeMudanca(v as ExecutiveTalent["disponibilidadeMudanca"])}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Ouvindo Mercado">Ouvindo Mercado</SelectItem>

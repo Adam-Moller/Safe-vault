@@ -1,3 +1,10 @@
+/**
+ * @file fileStorage.ts
+ * @description Gerenciamento de persistência de arquivos criptografados:
+ * Integra a File System Access API nativa do W3C para desktop, IndexedDB como fallback/armazenamento primário
+ * e rotinas seguras de importação/exportação com verificação de integridade SHA-256.
+ */
+
 import { encryptData, decryptData, packageVaultForExport, unpackAndVerifyVault } from "./encryption";
 import type { EncryptedData } from "@/types/opportunity";
 import {
@@ -7,38 +14,66 @@ import {
 
 const FILE_EXTENSION = ".enc";
 
-// Check if running on a mobile device
-export const isMobileDevice = () => {
+/**
+ * Interface estrita estendendo o objeto Window para suportar a File System Access API nativa do W3C.
+ */
+interface FileSystemWindow extends Window {
+  showSaveFilePicker?: (options?: {
+    suggestedName?: string;
+    types?: Array<{
+      description: string;
+      accept: Record<string, string[]>;
+    }>;
+  }) => Promise<FileSystemFileHandle>;
+  showOpenFilePicker?: (options?: {
+    types?: Array<{
+      description: string;
+      accept: Record<string, string[]>;
+    }>;
+    multiple?: boolean;
+  }) => Promise<FileSystemFileHandle[]>;
+}
+
+/**
+ * Identifica se a execução ocorre em um dispositivo móvel via User Agent.
+ */
+export const isMobileDevice = (): boolean => {
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 };
 
-// Check if File System Access API is supported
-// Returns false on mobile to prevent file picker dialogs
-export const isFileSystemSupported = () => {
-  // Check if we're in an iframe (Lovable preview)
+/**
+ * Avalia se o navegador suporta a File System Access API para salvar arquivos diretamente no disco do SO.
+ * Desativado automaticamente em iframes e dispositivos móveis para evitar caixas de diálogo incompatíveis.
+ */
+export const isFileSystemSupported = (): boolean => {
   const isInIframe = window.self !== window.top;
   if (isInIframe) {
     return false;
   }
-  
-  // Mobile devices should always use IndexedDB
+
   if (isMobileDevice()) {
-    console.log("[FileStorage] Mobile device detected - using IndexedDB");
     return false;
   }
-  
-  return "showSaveFilePicker" in window && "showOpenFilePicker" in window;
+
+  const win = window as FileSystemWindow;
+  return typeof win.showSaveFilePicker === "function" && typeof win.showOpenFilePicker === "function";
 };
 
-// Save data using File System Access API (Desktop)
+/**
+ * Salva os dados criptografados diretamente em um arquivo no sistema de arquivos do desktop (File System API).
+ * @param data Dados descriptografados a serem serializados e cifrados.
+ * @param password Senha mestra para encriptação AES-GCM-256.
+ * @param fileHandle Handle opcional de arquivo já aberto para gravação direta sem diálogo.
+ * @returns Handle do arquivo gravado.
+ */
 export async function saveToFileSystem(
   data: EncryptedData,
   password: string,
   fileHandle?: FileSystemFileHandle
 ): Promise<FileSystemFileHandle> {
-  console.log("[FileStorage] Saving to file system:", data.fileName);
   const jsonString = JSON.stringify(data);
-  const encrypted = await encryptData(jsonString, password);
+  const encryptedBase64 = await encryptData(jsonString, password);
+  const filePackage = await packageVaultForExport(encryptedBase64);
 
   let handle = fileHandle;
 
@@ -46,12 +81,17 @@ export async function saveToFileSystem(
     const suggestedName = data.fileName.endsWith(FILE_EXTENSION)
       ? data.fileName
       : `${data.fileName}${FILE_EXTENSION}`;
-    
-    handle = await (window as any).showSaveFilePicker({
+
+    const win = window as FileSystemWindow;
+    if (!win.showSaveFilePicker) {
+      throw new Error("File System Access API não é suportada neste navegador.");
+    }
+
+    handle = await win.showSaveFilePicker({
       suggestedName,
       types: [
         {
-          description: "Encrypted CRM Data",
+          description: "Safe-Vault Encrypted Data",
           accept: { "application/octet-stream": [FILE_EXTENSION] },
         },
       ],
@@ -59,14 +99,18 @@ export async function saveToFileSystem(
   }
 
   const writable = await handle.createWritable();
-  await writable.write(encrypted);
+  await writable.write(filePackage);
   await writable.close();
-  
-  console.log("[FileStorage] Successfully saved to file system");
+
   return handle;
 }
 
-// Load data using File System Access API (Desktop)
+/**
+ * Carrega e descriptografa um arquivo do sistema de arquivos utilizando a File System Access API.
+ * @param password Senha mestra do cofre.
+ * @param fileHandle Handle de arquivo pré-existente (opcional).
+ * @returns Objeto com os dados decodificados e o handle do arquivo.
+ */
 export async function loadFromFileSystem(
   password: string,
   fileHandle?: FileSystemFileHandle
@@ -74,10 +118,15 @@ export async function loadFromFileSystem(
   let handle = fileHandle;
 
   if (!handle) {
-    const [selectedHandle] = await (window as any).showOpenFilePicker({
+    const win = window as FileSystemWindow;
+    if (!win.showOpenFilePicker) {
+      throw new Error("File System Access API não é suportada neste navegador.");
+    }
+
+    const [selectedHandle] = await win.showOpenFilePicker({
       types: [
         {
-          description: "Encrypted CRM Data",
+          description: "Safe-Vault Encrypted Data",
           accept: { "application/octet-stream": [FILE_EXTENSION] },
         },
       ],
@@ -88,85 +137,53 @@ export async function loadFromFileSystem(
 
   const file = await handle.getFile();
   const fileRawContent = await file.text();
-  console.log("[FileStorage] Loading from file system, raw content length:", fileRawContent.length);
-  
-  const { ciphertextBase64, verified } = await unpackAndVerifyVault(fileRawContent);
-  console.log("[FileStorage] Integrity verified:", verified);
 
+  const { ciphertextBase64 } = await unpackAndVerifyVault(fileRawContent);
   const decrypted = await decryptData(ciphertextBase64, password);
-  const data = JSON.parse(decrypted);
-  
-  console.log("[FileStorage] Loaded data:", { fileName: data.fileName, crmType: data.crmType });
+  const data = JSON.parse(decrypted) as EncryptedData;
 
   return { data, handle };
 }
 
-// Save to IndexedDB (Mobile/Fallback)
+/**
+ * Persiste os dados criptografados no armazenamento IndexedDB local do navegador.
+ * @param data Dados descriptografados a serem cifrados e armazenados.
+ * @param password Senha mestra do usuário.
+ */
 export async function saveToIndexedDB(
   data: EncryptedData,
   password: string
 ): Promise<void> {
-  console.log("[FileStorage] Saving to IndexedDB:", data.fileName);
-  console.log("[FileStorage] Data structure:", {
-    crmType: data.crmType,
-    dataType: typeof data.data,
-    isArray: Array.isArray(data.data),
-    ...(data.crmType === "workforce" && !Array.isArray(data.data) && {
-      stores: (data.data as any).stores?.length || 0,
-      employees: (data.data as any).employees?.length || 0,
-      badgeTemplates: (data.data as any).badgeTemplates?.length || 0,
-    })
-  });
-  
   const jsonString = JSON.stringify(data);
-  console.log("[FileStorage] JSON string length:", jsonString.length);
-  
   const encrypted = await encryptData(jsonString, password);
-  console.log("[FileStorage] Encrypted length:", encrypted.length);
-  
   await saveToIDB(data.fileName, encrypted);
-  console.log("[FileStorage] Successfully saved to IndexedDB");
 }
 
-// Load from IndexedDB (Mobile/Fallback)
+/**
+ * Recupera e descriptografa dados armazenados no IndexedDB pelo nome do arquivo.
+ * @param fileName Nome identificador do arquivo no registro local.
+ * @param password Senha mestra de descriptografia.
+ * @returns Dados estruturados do cofre.
+ */
 export async function loadFromIndexedDB(
   fileName: string,
   password: string
 ): Promise<EncryptedData> {
-  console.log("[FileStorage] Loading from IndexedDB:", fileName);
-  
   const encrypted = await loadFromIDB(fileName);
   if (!encrypted) {
-    console.error("[FileStorage] File not found in IndexedDB:", fileName);
     throw new Error("Arquivo não encontrado no armazenamento local");
   }
-  
-  console.log("[FileStorage] Found encrypted data, length:", encrypted.length);
-  
+
   const decrypted = await decryptData(encrypted, password);
-  console.log("[FileStorage] Decrypted data length:", decrypted.length);
-  
-  const data = JSON.parse(decrypted) as EncryptedData;
-  
-  console.log("[FileStorage] Parsed data:", {
-    fileName: data.fileName,
-    crmType: data.crmType,
-    dataType: typeof data.data,
-    isArray: Array.isArray(data.data),
-    ...(data.crmType === "workforce" && !Array.isArray(data.data) && {
-      stores: (data.data as any).stores?.length || 0,
-      employees: (data.data as any).employees?.length || 0,
-      badgeTemplates: (data.data as any).badgeTemplates?.length || 0,
-    })
-  });
-  
-  return data;
+  return JSON.parse(decrypted) as EncryptedData;
 }
 
-// Download encrypted file (Export/Backup with SHA-256 Integrity Header)
-export async function downloadEncryptedFile(data: EncryptedData, password: string) {
-  console.log("[FileStorage] Downloading encrypted file:", data.fileName);
-  
+/**
+ * Dispara o download no navegador de um arquivo `.enc` protegido com cabeçalho de integridade SHA-256.
+ * @param data Dados do cofre a serem exportados.
+ * @param password Senha mestra de cifragem.
+ */
+export async function downloadEncryptedFile(data: EncryptedData, password: string): Promise<void> {
   const jsonString = JSON.stringify(data);
   const encryptedBase64 = await encryptData(jsonString, password);
   const exportPackage = await packageVaultForExport(encryptedBase64);
@@ -184,42 +201,36 @@ export async function downloadEncryptedFile(data: EncryptedData, password: strin
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  
-  console.log("[FileStorage] Download initiated with integrity package");
 }
 
-// Upload encrypted file (Mobile/Fallback with SHA-256 Integrity Verification)
+/**
+ * Abre o seletor nativo de arquivos do browser para importar um backup `.enc` com validação de checksum.
+ * @param password Senha mestra do backup importado.
+ * @returns Dados decodificados do arquivo.
+ */
 export async function uploadEncryptedFile(password: string): Promise<EncryptedData> {
   return new Promise((resolve, reject) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = `${FILE_EXTENSION},.json`;
 
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
+    input.onchange = async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const file = target.files?.[0];
       if (!file) {
         reject(new Error("Nenhum arquivo selecionado"));
         return;
       }
 
       try {
-        console.log("[FileStorage] Uploading file:", file.name);
         const rawContent = await file.text();
-        console.log("[FileStorage] Upload content length:", rawContent.length);
-        
-        const { ciphertextBase64, verified } = await unpackAndVerifyVault(rawContent);
-        if (verified) {
-          console.log("[FileStorage] Checksum validado com sucesso via SHA-256");
-        }
-        
+        const { ciphertextBase64 } = await unpackAndVerifyVault(rawContent);
         const decrypted = await decryptData(ciphertextBase64, password);
-        const data = JSON.parse(decrypted);
-        
-        console.log("[FileStorage] Upload parsed successfully:", { fileName: data.fileName, crmType: data.crmType });
+        const data = JSON.parse(decrypted) as EncryptedData;
         resolve(data);
-      } catch (error) {
-        console.error("[FileStorage] Upload error:", error);
-        reject(error);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Falha ao processar arquivo de backup";
+        reject(new Error(message));
       }
     };
 

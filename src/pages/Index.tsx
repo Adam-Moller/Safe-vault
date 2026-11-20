@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+/**
+ * @file Index.tsx
+ * @description Ponto de entrada e orquestrador principal da aplicação Safe-Vault.
+ * Gerencia a autenticação local, seleção de domínios, roteamento dos módulos e persistência segura.
+ */
+
+import { useState, useCallback, useMemo } from "react";
 import { LoginScreen } from "@/components/LoginScreen";
 import { OpportunityCard } from "@/components/OpportunityCard";
 import { OpportunityModal } from "@/components/OpportunityModal";
@@ -12,20 +18,16 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Download, LogOut, Save, Search, ShieldCheck } from "lucide-react";
-import type { Opportunity, EncryptedData, Interaction } from "@/types/opportunity";
+import type { Opportunity, EncryptedData, Interaction, VaultPayload } from "@/types/opportunity";
 import type { Store, WorkforceData, BadgeTemplate } from "@/types/store";
 import type { TalentVaultData } from "@/types/talent";
 import type { DossierVaultData } from "@/types/dossier";
 import type { TherapyVaultData } from "@/types/therapy";
 import type { CRMType } from "@/types/crmData";
 import { ensureWorkforceData } from "@/utils/dataMigration";
-import {
-  isFileSystemSupported,
-  saveToFileSystem,
-  downloadEncryptedFile,
-  saveToIndexedDB,
-} from "@/utils/fileStorage";
+import { downloadEncryptedFile, saveToIndexedDB } from "@/utils/fileStorage";
 import { addFileToRegistry, updateFileInRegistry } from "@/utils/fileRegistry";
+import { useVaultAutoSave } from "@/hooks/useVaultAutoSave";
 
 const Index = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -33,54 +35,64 @@ const Index = () => {
   const [currentFileName, setCurrentFileName] = useState("");
   const [currentCrmType, setCurrentCrmType] = useState<CRMType>("sales");
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | undefined>();
-  
-  // Sales CRM state
+
+  // Estados dos domínios
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-  
-  // Workforce CRM state
   const [workforceData, setWorkforceData] = useState<WorkforceData>({
     stores: [],
     employees: [],
-    badgeTemplates: []
+    badgeTemplates: [],
   });
+  const [talentData, setTalentData] = useState<TalentVaultData>({ talents: [] });
+  const [dossierData, setDossierData] = useState<DossierVaultData>({ cases: [] });
+  const [therapyData, setTherapyData] = useState<TherapyVaultData>({ patients: [] });
 
-  // Talent CRM state
-  const [talentData, setTalentData] = useState<TalentVaultData>({
-    talents: []
-  });
-
-  // Dossier CRM state
-  const [dossierData, setDossierData] = useState<DossierVaultData>({
-    cases: []
-  });
-
-  // Therapy CRM state
-  const [therapyData, setTherapyData] = useState<TherapyVaultData>({
-    patients: []
-  });
-  
+  // Estados de UI e filtros
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isOpportunityModalOpen, setIsOpportunityModalOpen] = useState(false);
   const [isInteractionModalOpen, setIsInteractionModalOpen] = useState(false);
   const [editingOpportunity, setEditingOpportunity] = useState<Opportunity | undefined>();
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | undefined>();
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
-  const [lastSaveTime, setLastSaveTime] = useState<Date | null>(null);
   const { toast } = useToast();
-  const supportsFileSystem = isFileSystemSupported();
-  
-  const isInitialLoad = useRef(true);
+
+  /**
+   * Retorna os dados ativamente manipulados pelo domínio em execução.
+   */
+  const getCurrentDataPayload = useCallback((): { dataToSave: VaultPayload; itemCount: number } => {
+    switch (currentCrmType) {
+      case "workforce":
+        return { dataToSave: workforceData, itemCount: workforceData.stores.length };
+      case "talent":
+        return { dataToSave: talentData, itemCount: talentData.talents.length };
+      case "dossier":
+        return { dataToSave: dossierData, itemCount: dossierData.cases.length };
+      case "therapy":
+        return { dataToSave: therapyData, itemCount: therapyData.patients.length };
+      case "sales":
+      default:
+        return { dataToSave: opportunities, itemCount: opportunities.length };
+    }
+  }, [currentCrmType, workforceData, talentData, dossierData, therapyData, opportunities]);
+
+  // Hook desacoplado de Auto-Save e Persistência Atômica
+  const { isAutoSaving, lastSaveTime, saveNow, markInitialLoadComplete } = useVaultAutoSave({
+    isLoggedIn,
+    currentFileName,
+    password,
+    currentCrmType,
+    fileHandle,
+    getCurrentPayload: getCurrentDataPayload,
+    dependencyArray: [opportunities, workforceData, talentData, dossierData, therapyData],
+  });
 
   const handleLogin = (data: EncryptedData, loginPassword: string, handle?: FileSystemFileHandle) => {
-    console.log("[Index] Login with data:", { fileName: data.fileName, crmType: data.crmType });
-    
     setPassword(loginPassword);
     setCurrentFileName(data.fileName);
     const crmType = data.crmType || "sales";
     setCurrentCrmType(crmType);
     setFileHandle(handle);
-    
+
     let itemCount = 0;
     let itemLabel = "itens";
 
@@ -96,80 +108,74 @@ const Index = () => {
       itemCount = wfData.stores.length;
       itemLabel = "lojas";
     } else if (crmType === "talent") {
-      const tData = (data.data && typeof data.data === "object" && "talents" in data.data)
+      const tData = data.data && typeof data.data === "object" && "talents" in data.data
         ? (data.data as TalentVaultData)
         : { talents: [] };
       setTalentData(tData);
       itemCount = tData.talents.length;
       itemLabel = "executivos";
     } else if (crmType === "dossier") {
-      const dData = (data.data && typeof data.data === "object" && "cases" in data.data)
+      const dData = data.data && typeof data.data === "object" && "cases" in data.data
         ? (data.data as DossierVaultData)
         : { cases: [] };
       setDossierData(dData);
       itemCount = dData.cases.length;
       itemLabel = "casos";
     } else if (crmType === "therapy") {
-      const thData = (data.data && typeof data.data === "object" && "patients" in data.data)
+      const thData = data.data && typeof data.data === "object" && "patients" in data.data
         ? (data.data as TherapyVaultData)
         : { patients: [] };
       setTherapyData(thData);
       itemCount = thData.patients.length;
       itemLabel = "prontuários";
     }
-    
+
     setIsLoggedIn(true);
-    isInitialLoad.current = true;
-    
+    markInitialLoadComplete();
+
     updateFileInRegistry(data.fileName, {
       lastOpened: new Date().toISOString(),
-      crmType: crmType,
+      crmType,
       itemCount,
       lastModified: data.lastModified,
     });
-    
+
     toast({
-      title: "Login Bem-Sucedido",
+      title: "Cofre Aberto com Sucesso",
       description: `Carregados ${itemCount} ${itemLabel} de ${data.fileName}`,
     });
-    
-    setTimeout(() => {
-      isInitialLoad.current = false;
-    }, 2500);
   };
 
   const handleCreateNew = async (newPassword: string, fileName: string, crmType: CRMType) => {
-    console.log("[Index] Creating new CRM:", { fileName, crmType });
-    
     setPassword(newPassword);
     setCurrentFileName(fileName);
     setCurrentCrmType(crmType);
-    
-    let initialData: any = [];
+
+    let initialData: VaultPayload = [];
     if (crmType === "sales") {
       setOpportunities([]);
       initialData = [];
     } else if (crmType === "workforce") {
-      const initWf = { stores: [], employees: [], badgeTemplates: [] };
+      const initWf: WorkforceData = { stores: [], employees: [], badgeTemplates: [] };
       setWorkforceData(initWf);
       initialData = initWf;
     } else if (crmType === "talent") {
-      const initTalent = { talents: [] };
+      const initTalent: TalentVaultData = { talents: [] };
       setTalentData(initTalent);
       initialData = initTalent;
     } else if (crmType === "dossier") {
-      const initDossier = { cases: [] };
+      const initDossier: DossierVaultData = { cases: [] };
       setDossierData(initDossier);
       initialData = initDossier;
     } else if (crmType === "therapy") {
-      const initTherapy = { patients: [] };
+      const initTherapy: TherapyVaultData = { patients: [] };
       setTherapyData(initTherapy);
       initialData = initTherapy;
     }
 
     setIsLoggedIn(true);
-    isInitialLoad.current = true;
-    
+    markInitialLoadComplete();
+
     addFileToRegistry({
       fileName,
       lastModified: new Date().toISOString(),
@@ -177,7 +183,7 @@ const Index = () => {
       crmType,
       itemCount: 0,
     });
-    
+
     try {
       const now = new Date().toISOString();
       const encryptedData: EncryptedData = {
@@ -187,9 +193,9 @@ const Index = () => {
         crmType,
         data: initialData,
       };
-      
+
       await saveToIndexedDB(encryptedData, newPassword);
-      
+
       const typeLabels: Record<CRMType, string> = {
         sales: "CRM de Vendas B2B",
         workforce: "Gestão Regional de Lojas",
@@ -200,116 +206,40 @@ const Index = () => {
 
       toast({
         title: "Novo Cofre Criado",
-        description: `${fileName} (${typeLabels[crmType]}) está protegido e pronto`,
+        description: `${fileName} (${typeLabels[crmType]}) está protegido e pronto para uso.`,
       });
-    } catch (error: any) {
-      console.error("[Index] Error creating new CRM:", error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Falha ao criar arquivo";
       toast({
         title: "Erro de Criação",
-        description: error.message || "Falha ao criar arquivo",
+        description: message,
         variant: "destructive",
       });
-    }
-    
-    setTimeout(() => {
-      isInitialLoad.current = false;
-    }, 2500);
-  };
-
-  const getCurrentDataPayload = (): { dataToSave: any; itemCount: number } => {
-    switch (currentCrmType) {
-      case "workforce":
-        return { dataToSave: workforceData, itemCount: workforceData.stores.length };
-      case "talent":
-        return { dataToSave: talentData, itemCount: (talentData.talents || []).length };
-      case "dossier":
-        return { dataToSave: dossierData, itemCount: (dossierData.cases || []).length };
-      case "therapy":
-        return { dataToSave: therapyData, itemCount: (therapyData.patients || []).length };
-      case "sales":
-      default:
-        return { dataToSave: opportunities, itemCount: opportunities.length };
-    }
-  };
-
-  const saveData = async (showToast = true) => {
-    if (!currentFileName || !password) {
-      console.log("[Index] Cannot save: missing fileName or password");
-      return;
-    }
-    
-    setIsAutoSaving(true);
-    try {
-      const now = new Date().toISOString();
-      const { dataToSave, itemCount } = getCurrentDataPayload();
-      
-      const encryptedData: EncryptedData = {
-        fileName: currentFileName,
-        createdDate: now,
-        lastModified: now,
-        crmType: currentCrmType,
-        data: dataToSave,
-      };
-      
-      await saveToIndexedDB(encryptedData, password);
-      
-      if (supportsFileSystem && fileHandle) {
-        try {
-          await saveToFileSystem(encryptedData, password, fileHandle);
-        } catch (fsError) {
-          console.warn("[Index] Failed to save to file system, but IndexedDB save succeeded:", fsError);
-        }
-      }
-
-      updateFileInRegistry(currentFileName, {
-        lastModified: now,
-        itemCount,
-      });
-      
-      setLastSaveTime(new Date());
-
-      if (showToast) {
-        toast({
-          title: "Dados Criptografados e Salvos",
-          description: "Salvo com sucesso no armazenamento local seguro",
-        });
-      }
-    } catch (error: any) {
-      console.error("[Index] Error saving data:", error);
-      toast({
-        title: "Erro ao Salvar",
-        description: error.message || "Falha ao salvar dados",
-        variant: "destructive",
-      });
-    } finally {
-      setIsAutoSaving(false);
     }
   };
 
   const handleSaveOpportunity = (opportunity: Opportunity) => {
-    const newOpportunities = opportunities.some((o) => o.id === opportunity.id)
-      ? opportunities.map((o) => (o.id === opportunity.id ? opportunity : o))
-      : [...opportunities, opportunity];
-
-    setOpportunities(newOpportunities);
+    setOpportunities((prev) =>
+      prev.some((o) => o.id === opportunity.id)
+        ? prev.map((o) => (o.id === opportunity.id ? opportunity : o))
+        : [...prev, opportunity]
+    );
     setEditingOpportunity(undefined);
   };
 
   const handleDeleteOpportunity = (id: string) => {
     if (!confirm("Tem certeza que deseja excluir esta oportunidade?")) return;
-
-    const newOpportunities = opportunities.filter((o) => o.id !== id);
-    setOpportunities(newOpportunities);
+    setOpportunities((prev) => prev.filter((o) => o.id !== id));
     toast({
       title: "Oportunidade Removida",
-      description: "A oportunidade foi excluída do cofre",
+      description: "A oportunidade foi excluída do cofre.",
     });
   };
 
   const handleAddInteraction = (interaction: Interaction, nextContactDate?: string) => {
     if (!selectedOpportunity) return;
 
-    const updatedOpportunity = {
+    const updatedOpportunity: Opportunity = {
       ...selectedOpportunity,
       historicoInteracoes: [...selectedOpportunity.historicoInteracoes, interaction],
       ultimoContatoData: interaction.data,
@@ -321,44 +251,35 @@ const Index = () => {
   };
 
   const handleSaveStore = (store: Store) => {
-    setWorkforceData(prev => {
-      const storeExists = prev.stores.some((s) => s.id === store.id);
-      const newStores = storeExists
+    setWorkforceData((prev) => ({
+      ...prev,
+      stores: prev.stores.some((s) => s.id === store.id)
         ? prev.stores.map((s) => (s.id === store.id ? store : s))
-        : [...prev.stores, store];
-      
-      return {
-        ...prev,
-        stores: newStores
-      };
-    });
+        : [...prev.stores, store],
+    }));
   };
 
   const handleDeleteStore = (id: string) => {
-    setWorkforceData(prev => ({
+    setWorkforceData((prev) => ({
       ...prev,
-      stores: prev.stores.filter((s) => s.id !== id)
+      stores: prev.stores.filter((s) => s.id !== id),
     }));
   };
 
   const handleSaveBadgeTemplates = (templates: BadgeTemplate[]) => {
-    setWorkforceData(prev => ({
+    setWorkforceData((prev) => ({
       ...prev,
-      badgeTemplates: templates
+      badgeTemplates: templates,
     }));
-  };
-
-  const handleManualSave = () => {
-    saveData(true);
   };
 
   const handleExportBackup = async () => {
     if (!currentFileName || !password) return;
-    
+
     try {
       const now = new Date().toISOString();
       const { dataToSave } = getCurrentDataPayload();
-      
+
       const encryptedData: EncryptedData = {
         fileName: currentFileName,
         createdDate: now,
@@ -366,23 +287,24 @@ const Index = () => {
         crmType: currentCrmType,
         data: dataToSave,
       };
-      
+
       await downloadEncryptedFile(encryptedData, password);
       toast({
         title: "Backup Exportado",
-        description: "Arquivo criptografado baixado com sucesso",
+        description: "Arquivo criptografado baixado com checksum de integridade SHA-256.",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Falha ao exportar backup";
       toast({
         title: "Erro ao Exportar",
-        description: error.message || "Falha ao exportar backup",
+        description: message,
         variant: "destructive",
       });
     }
   };
 
   const handleLogout = () => {
-    if (confirm("Deseja realmente sair? Todas as alterações salvas estão criptografadas.")) {
+    if (confirm("Deseja realmente bloquear o cofre e sair?")) {
       setIsLoggedIn(false);
       setPassword("");
       setCurrentFileName("");
@@ -393,33 +315,21 @@ const Index = () => {
       setDossierData({ cases: [] });
       setTherapyData({ patients: [] });
       toast({
-        title: "Sessão Encerrada",
-        description: "Memória descriptografada limpa com sucesso",
+        title: "Cofre Bloqueado",
+        description: "A memória descriptografada foi limpa com segurança.",
       });
     }
   };
 
-  // Auto-save debounce effect
-  useEffect(() => {
-    if (!isLoggedIn || isInitialLoad.current) return;
-    
-    const timer = setTimeout(() => {
-      console.log("[Index] Auto-saving module changes...");
-      saveData(false);
-    }, 2000);
-    
-    return () => clearTimeout(timer);
-  }, [opportunities, workforceData, talentData, dossierData, therapyData]);
-
-  const filteredOpportunities = opportunities.filter((opp) => {
-    const matchesSearch =
-      opp.nomeEmpresa.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      opp.contatoPrincipal.nome.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus = statusFilter === "all" || opp.status === statusFilter;
-
-    return matchesSearch && matchesStatus;
-  });
+  const filteredOpportunities = useMemo(() => {
+    return opportunities.filter((opp) => {
+      const matchesSearch =
+        opp.nomeEmpresa.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        opp.contatoPrincipal.nome.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesStatus = statusFilter === "all" || opp.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [opportunities, searchTerm, statusFilter]);
 
   if (!isLoggedIn) {
     return <LoginScreen onLogin={handleLogin} onCreateNew={handleCreateNew} />;
@@ -427,17 +337,23 @@ const Index = () => {
 
   const getModuleTitle = () => {
     switch (currentCrmType) {
-      case "workforce": return "Gestão Regional & Lojas";
-      case "talent": return "Headhunting & Talentos C-Level";
-      case "dossier": return "Dossiês Confidenciais & Jurídico";
-      case "therapy": return "Prontuário & Notas Clínicas";
-      case "sales": default: return "CRM de Vendas B2B";
+      case "workforce":
+        return "Gestão Regional & Lojas";
+      case "talent":
+        return "Headhunting & Talentos C-Level";
+      case "dossier":
+        return "Dossiês Confidenciais & Jurídico";
+      case "therapy":
+        return "Prontuário & Notas Clínicas";
+      case "sales":
+      default:
+        return "CRM de Vendas B2B";
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      {/* Header Unificado */}
       <header className="border-b bg-card sticky top-0 z-10 shadow-sm">
         <div className="container mx-auto px-4 py-3">
           <div className="flex items-start justify-between gap-3">
@@ -471,7 +387,7 @@ const Index = () => {
               <Download className="w-4 h-4 mr-2" />
               <span>Exportar Backup (.enc)</span>
             </Button>
-            <Button onClick={handleManualSave} variant="default" size="sm" disabled={isAutoSaving}>
+            <Button onClick={() => saveNow(true)} variant="default" size="sm" disabled={isAutoSaving}>
               <Save className="w-4 h-4 mr-2" />
               <span>Salvar Agora</span>
             </Button>

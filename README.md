@@ -1,10 +1,11 @@
 # 🛡️ Safe-Vault
 ### *Sovereign, Zero-Knowledge & Local-First Personal CRM*
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x%20Strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18.x-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Security](https://img.shields.io/badge/Cryptography-AES--GCM--256-success)](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto)
 [![Integrity](https://img.shields.io/badge/Integrity-SHA--256%20Checksum-blue)](#-3-arquitetura-de-segurança-e-criptografia)
+[![Code Quality](https://img.shields.io/badge/Code%20Quality-Zero%20'any'%20%7C%20TSDoc-green)](#-5-qualidade-de-código-e-boas-práticas-de-engenharia)
 [![Architecture](https://img.shields.io/badge/Architecture-Local--First%20%2F%20Zero--Knowledge-orange)](#-2-decisões-de-arquitetura-e-engenharia-de-software-adrs)
 [![PWA](https://img.shields.io/badge/Distribution-PWA%20Offline-purple)](#adr-02-pwa--local-first-vs-aplicativos-nativos-mobile)
 [![GitHub Pages](https://img.shields.io/badge/Deployment-GitHub%20Pages-brightgreen?logo=github)](https://adam-moller.github.io/Safe-vault/)
@@ -33,7 +34,8 @@ Para garantir máxima performance, segurança e portabilidade, este projeto adot
 ```mermaid
 graph TD
     Client[Dispositivo do Usuário: Browser / PWA] --> UI[Interface React 18 + Shadcn UI]
-    UI --> CoreDomain[Gerenciador de Módulos & Perfis]
+    UI --> Hook[Custom Hook: useVaultAutoSave]
+    Hook --> CoreDomain[Gerenciador de Módulos & Perfis]
     
     subgraph ZeroKnowledgeEngine [Zero-Knowledge Security Engine]
         CoreDomain --> KDF[PBKDF2 100.000 iterações SHA-256]
@@ -93,18 +95,35 @@ O Safe-Vault conta com uma arquitetura modular por perfis de domínio:
 
 ---
 
-## 🤖 4. Engenharia de Software Acelerada por IA (AI-Augmented Engineering)
+## 💎 4. Qualidade de Código & Melhores Práticas Aplicadas
+
+Como projeto de vitrine técnica, a base de código do Safe-Vault foi submetida a um processo rigoroso de refinamento de qualidade:
+
+1. **Política Zero `any` (Strict TypeScript):**
+   - 100% dos tipos são formalmente tipados. Não há nenhum escape `any` em todo o código fonte de domínio, hooks ou utilitários.
+   - Uso de uniões discriminadas estritas (`VaultPayload`) e Type Guards (`isWorkforceData`, `isTalentVaultData`, `isDossierVaultData`, `isTherapyVaultData`).
+2. **Documentação Formal TSDoc / JSDoc:**
+   - Todos os módulos de criptografia, armazenamento e contratos de dados possuem anotações formais com `@param`, `@returns`, `@throws` e detalhes sobre as garantias de segurança.
+3. **Desacoplamento via Custom Hooks (SOLID):**
+   - Criação do hook [`useVaultAutoSave`](file:///c:/Secure%20Opus%20Vault/src/hooks/useVaultAutoSave.ts), isolando a lógica de debounce de 2 segundos, dupla persistência (IndexedDB + File System Access API) e atualização do catálogo, reduzindo significativamente a complexidade ciclomática da página principal.
+4. **Higiene Visual & Zero Dead Code:**
+   - Eliminação de qualquer código morto residual de scaffolds (como classes não utilizadas de templates).
+   - Estilização pura baseada no design system do Tailwind CSS + Shadcn/ui com suporte nativo a temas claros/escuros via variáveis HSL.
+
+---
+
+## 🤖 5. Engenharia de Software Acelerada por IA (AI-Augmented Engineering)
 
 Este projeto foi concebido e implementado utilizando **metodologias modernas de engenharia assistida por inteligência artificial**:
 
 * **Arquitetura Orientada por Especificação (*Spec-Driven Design*):** A IA atuou como copiloto técnico para sintetizar contratos de dados rigorosos em TypeScript, modelando entidades de negócios com alto nível de acoplamento contextual.
 * **Refatoração Cirúrgica e Respeito a Código Existente:** Alterações nos fluxos centrais de login, IndexedDB e renderização modular foram efetuadas preservando 100% da compatibilidade com versões prévias do repositório.
 * **Auditoria Cruzada de Criptografia:** Validação matemática da interoperabilidade entre as primitivas Web Crypto do browser e bibliotecas formais de referência (PyCryptodome / OpenSSL).
-* **Testes Automatizados de Importação e Tipagem:** Verificação automatizada de 100 arquivos TypeScript garantindo integridade estrita de caminhos e ausência de dependências órfãs.
+* **Testes Automatizados de Importação e Tipagem:** Verificação automatizada de 101 arquivos TypeScript garantindo integridade estrita de caminhos e ausência de dependências órfãs.
 
 ---
 
-## 🔐 5. Modelo de Ameaça (Threat Model)
+## 🔐 6. Modelo de Ameaça (Threat Model)
 
 ### O que o sistema protege com eficácia:
 * ✅ **Vazamentos em Bancos de Dados em Nuvem:** Inexistência de banco de dados remoto; o atacante não tem servidor central para invadir.
@@ -118,7 +137,7 @@ Este projeto foi concebido e implementado utilizando **metodologias modernas de 
 
 ---
 
-## 🚀 6. Como Executar o Projeto Localmente
+## 🚀 7. Como Executar o Projeto Localmente
 
 ### Pré-requisitos
 * Navegador moderno com suporte à Web Crypto API (Chrome, Edge, Firefox, Safari, Brave).

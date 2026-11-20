@@ -94,11 +94,12 @@ export const LoginScreen = ({ onLogin, onCreateNew }: LoginScreenProps) => {
         isArray: Array.isArray(data.data)
       });
       onLogin(data, password);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("[LoginScreen] Error loading file:", error);
+      const message = error instanceof Error ? error.message : "Falha ao descriptografar arquivo. Verifique sua senha.";
       toast({
         title: "Erro ao Abrir Arquivo",
-        description: error.message || "Falha ao descriptografar arquivo. Verifique sua senha.",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -140,10 +141,11 @@ export const LoginScreen = ({ onLogin, onCreateNew }: LoginScreenProps) => {
       const pwd = password;
       setPassword("");
       onLogin(data, pwd);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Falha ao importar backup";
       toast({
         title: "Erro ao Importar",
-        description: error.message || "Falha ao importar backup",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -204,10 +206,11 @@ export const LoginScreen = ({ onLogin, onCreateNew }: LoginScreenProps) => {
         title: "Arquivo Removido",
         description: "Arquivo foi excluído do armazenamento local",
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Falha ao excluir arquivo";
       toast({
         title: "Erro",
-        description: error.message || "Falha ao excluir arquivo",
+        description: message,
         variant: "destructive",
       });
     }
