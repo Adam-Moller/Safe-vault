@@ -4,7 +4,7 @@
  * Gerencia a autenticação local, seleção de domínios, roteamento dos módulos e persistência segura.
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { LoginScreen } from "@/components/LoginScreen";
 import { OpportunityCard } from "@/components/OpportunityCard";
 import { OpportunityModal } from "@/components/OpportunityModal";
@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Download, LogOut, Save, Search, ShieldCheck } from "lucide-react";
+import { Plus, Download, LogOut, Save, Search, ShieldCheck, Moon, Sun } from "lucide-react";
 import type { Opportunity, EncryptedData, Interaction, VaultPayload } from "@/types/opportunity";
 import type { Store, WorkforceData, BadgeTemplate } from "@/types/store";
 import type { TalentVaultData } from "@/types/talent";
@@ -28,24 +28,123 @@ import { ensureWorkforceData } from "@/utils/dataMigration";
 import { downloadEncryptedFile, saveToIndexedDB } from "@/utils/fileStorage";
 import { addFileToRegistry, updateFileInRegistry } from "@/utils/fileRegistry";
 import { useVaultAutoSave } from "@/hooks/useVaultAutoSave";
+import {
+  DEMO_SALES_DATA,
+  DEMO_WORKFORCE_DATA,
+  DEMO_TALENT_DATA,
+  DEMO_DOSSIER_DATA,
+  DEMO_THERAPY_DATA,
+  DEMO_VAULT_NAMES,
+} from "@/utils/demoData";
+
+const VALID_CRM_MODULES: readonly CRMType[] = ["sales", "workforce", "talent", "dossier", "therapy"];
+
+/**
+ * Type Guard que valida se o parâmetro de URL corresponde a um módulo válido do Safe-Vault.
+ * @param value Valor textual extraído da query string.
+ */
+function isValidCRMType(value: string | null): value is CRMType {
+  return value !== null && (VALID_CRM_MODULES as readonly string[]).includes(value);
+}
+
+/**
+ * Extrai parâmetros de query string tanto de `window.location.search` quanto de rotas hash (`#/?demo=...`).
+ * @param key Chave do parâmetro desejado.
+ */
+function getUrlParameter(key: string): string | null {
+  if (typeof window === "undefined") return null;
+
+  const searchParams = new URLSearchParams(window.location.search);
+  const fromSearch = searchParams.get(key);
+  if (fromSearch !== null) return fromSearch;
+
+  if (window.location.hash.includes("?")) {
+    const hashQuery = window.location.hash.split("?")[1];
+    const hashParams = new URLSearchParams(hashQuery);
+    return hashParams.get(key);
+  }
+
+  return null;
+}
+
+/**
+ * Determina o estado inicial do tema (Dark/Light) priorizando o parâmetro `?theme=` da URL.
+ */
+function resolveInitialDarkMode(): boolean {
+  const themeParam = getUrlParameter("theme");
+  if (themeParam === "dark") return true;
+  if (themeParam === "light") return false;
+
+  if (typeof window !== "undefined") {
+    const savedTheme = window.localStorage.getItem("safe_vault_theme");
+    if (savedTheme === "dark") return true;
+    if (savedTheme === "light") return false;
+    return document.documentElement.classList.contains("dark");
+  }
+  return false;
+}
 
 const Index = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [password, setPassword] = useState("");
-  const [currentFileName, setCurrentFileName] = useState("");
-  const [currentCrmType, setCurrentCrmType] = useState<CRMType>("sales");
+  const initialDemoModule = useMemo(() => {
+    const demoParam = getUrlParameter("demo");
+    return isValidCRMType(demoParam) ? demoParam : null;
+  }, []);
+
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    const dark = resolveInitialDarkMode();
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", dark);
+    }
+    return dark;
+  });
+
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => initialDemoModule !== null);
+  const [password, setPassword] = useState<string>(() =>
+    initialDemoModule ? "DemoSandbox#2025" : ""
+  );
+  const [currentFileName, setCurrentFileName] = useState<string>(() =>
+    initialDemoModule ? DEMO_VAULT_NAMES[initialDemoModule] : ""
+  );
+  const [currentCrmType, setCurrentCrmType] = useState<CRMType>(() =>
+    initialDemoModule || "sales"
+  );
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | undefined>();
 
-  // Estados dos domínios
-  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
-  const [workforceData, setWorkforceData] = useState<WorkforceData>({
-    stores: [],
-    employees: [],
-    badgeTemplates: [],
-  });
-  const [talentData, setTalentData] = useState<TalentVaultData>({ talents: [] });
-  const [dossierData, setDossierData] = useState<DossierVaultData>({ cases: [] });
-  const [therapyData, setTherapyData] = useState<TherapyVaultData>({ patients: [] });
+  // Estados dos domínios (pré-populados se o modo demo for acionado via URL)
+  const [opportunities, setOpportunities] = useState<Opportunity[]>(() =>
+    initialDemoModule === "sales" ? DEMO_SALES_DATA : []
+  );
+  const [workforceData, setWorkforceData] = useState<WorkforceData>(() =>
+    initialDemoModule === "workforce"
+      ? DEMO_WORKFORCE_DATA
+      : {
+          stores: [],
+          employees: [],
+          badgeTemplates: [],
+        }
+  );
+  const [talentData, setTalentData] = useState<TalentVaultData>(() =>
+    initialDemoModule === "talent" ? DEMO_TALENT_DATA : { talents: [] }
+  );
+  const [dossierData, setDossierData] = useState<DossierVaultData>(() =>
+    initialDemoModule === "dossier" ? DEMO_DOSSIER_DATA : { cases: [] }
+  );
+  const [therapyData, setTherapyData] = useState<TherapyVaultData>(() =>
+    initialDemoModule === "therapy" ? DEMO_THERAPY_DATA : { patients: [] }
+  );
+
+  // Sincroniza a classe `dark` na raiz do documento HTML
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDarkMode);
+    window.localStorage.setItem("safe_vault_theme", isDarkMode ? "dark" : "light");
+  }, [isDarkMode]);
+
+  /**
+   * Alterna entre os modos visual Escuro (Dark) e Claro (Light).
+   */
+  const handleToggleTheme = useCallback(() => {
+    setIsDarkMode((prev) => !prev);
+  }, []);
 
   // Estados de UI e filtros
   const [searchTerm, setSearchTerm] = useState("");
@@ -85,6 +184,12 @@ const Index = () => {
     getCurrentPayload: getCurrentDataPayload,
     dependencyArray: [opportunities, workforceData, talentData, dossierData, therapyData],
   });
+
+  useEffect(() => {
+    if (initialDemoModule) {
+      markInitialLoadComplete();
+    }
+  }, [initialDemoModule, markInitialLoadComplete]);
 
   const handleLogin = (data: EncryptedData, loginPassword: string, handle?: FileSystemFileHandle) => {
     setPassword(loginPassword);
@@ -332,7 +437,14 @@ const Index = () => {
   }, [opportunities, searchTerm, statusFilter]);
 
   if (!isLoggedIn) {
-    return <LoginScreen onLogin={handleLogin} onCreateNew={handleCreateNew} />;
+    return (
+      <LoginScreen
+        onLogin={handleLogin}
+        onCreateNew={handleCreateNew}
+        isDarkMode={isDarkMode}
+        onToggleTheme={handleToggleTheme}
+      />
+    );
   }
 
   const getModuleTitle = () => {
@@ -373,10 +485,24 @@ const Index = () => {
                 </p>
               )}
             </div>
-            <Button onClick={handleLogout} variant="outline" size="sm" className="shrink-0">
-              <LogOut className="w-4 h-4" />
-              <span className="hidden md:inline ml-2">Bloquear / Sair</span>
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                onClick={handleToggleTheme}
+                variant="outline"
+                size="sm"
+                title={isDarkMode ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
+              >
+                {isDarkMode ? (
+                  <Sun className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Moon className="w-4 h-4" />
+                )}
+              </Button>
+              <Button onClick={handleLogout} variant="outline" size="sm" className="shrink-0">
+                <LogOut className="w-4 h-4" />
+                <span className="hidden md:inline ml-2">Bloquear / Sair</span>
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 mt-3 flex-wrap">

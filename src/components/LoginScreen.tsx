@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Lock, FileKey, Upload, Plus, HardDrive, Briefcase, Store, Users, ShieldAlert, HeartPulse } from "lucide-react";
+import { Lock, FileKey, Upload, Plus, HardDrive, Briefcase, Store, Users, ShieldAlert, HeartPulse, Sparkles, Sun, Moon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   uploadEncryptedFile,
@@ -17,13 +17,16 @@ import type { CRMType } from "@/types/crmData";
 import { verifyRegistryIntegrity, syncRegistryWithIndexedDB, removeFileFromRegistry, type VerifiedFileEntry } from "@/utils/fileRegistry";
 import { FileListItem } from "@/components/FileListItem";
 import { deleteFromIndexedDB } from "@/utils/indexedDB";
+import { buildDemoEncryptedData } from "@/utils/demoData";
 
 interface LoginScreenProps {
   onLogin: (data: EncryptedData, password: string, fileHandle?: FileSystemFileHandle) => void;
   onCreateNew: (password: string, fileName: string, crmType: CRMType) => void;
+  isDarkMode?: boolean;
+  onToggleTheme?: () => void;
 }
 
-export const LoginScreen = ({ onLogin, onCreateNew }: LoginScreenProps) => {
+export const LoginScreen = ({ onLogin, onCreateNew, isDarkMode, onToggleTheme }: LoginScreenProps) => {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(true);
@@ -216,10 +219,31 @@ export const LoginScreen = ({ onLogin, onCreateNew }: LoginScreenProps) => {
     }
   };
 
+  /**
+   * Inicia imediatamente um cofre de demonstração pré-populado para avaliação rápida sem fricção.
+   * @param targetModule Módulo vertical a ser carregado no modo sandbox.
+   */
+  const handleLaunchDemoModule = (targetModule: CRMType) => {
+    const demoEnvelope = buildDemoEncryptedData(targetModule);
+    onLogin(demoEnvelope, "DemoSandbox#2025");
+  };
+
   return (
     <>
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-secondary/30 to-background p-4 overflow-y-auto pb-safe">
-        <Card className="w-full max-w-2xl shadow-lg max-h-[90vh] overflow-y-auto">
+        <Card className="w-full max-w-2xl shadow-lg max-h-[90vh] overflow-y-auto relative">
+          {onToggleTheme && (
+            <div className="absolute top-4 right-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onToggleTheme}
+                title={isDarkMode ? "Alternar para Modo Claro" : "Alternar para Modo Escuro"}
+              >
+                {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+              </Button>
+            </div>
+          )}
           <CardHeader className="text-center space-y-2">
             <div className="flex justify-center mb-4">
               <div className="p-4 bg-primary/10 rounded-full">
@@ -273,6 +297,69 @@ export const LoginScreen = ({ onLogin, onCreateNew }: LoginScreenProps) => {
                 <Plus className="w-4 h-4 mr-2" />
                 Criar Novo Arquivo CRM
               </Button>
+            </div>
+
+            {/* Seção de Modo Demonstração (Sandbox) para Avaliação Instantânea */}
+            <div className="p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  Carregar Cofres de Demonstração (Sandbox)
+                </h4>
+                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/15 text-primary font-semibold">
+                  Acesso Instantâneo
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Explore os 5 módulos com dados corporativos fictícios pré-populados sem necessidade de configurar senha:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="justify-start text-xs h-9 bg-background/80 hover:bg-background"
+                  onClick={() => handleLaunchDemoModule("sales")}
+                >
+                  <Briefcase className="w-3.5 h-3.5 mr-2 text-primary shrink-0" />
+                  1. Vendas & Blackbook B2B
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="justify-start text-xs h-9 bg-background/80 hover:bg-background"
+                  onClick={() => handleLaunchDemoModule("workforce")}
+                >
+                  <Store className="w-3.5 h-3.5 mr-2 text-primary shrink-0" />
+                  2. Gestão Regional & Lojas
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="justify-start text-xs h-9 bg-background/80 hover:bg-background"
+                  onClick={() => handleLaunchDemoModule("talent")}
+                >
+                  <Users className="w-3.5 h-3.5 mr-2 text-primary shrink-0" />
+                  3. Headhunting C-Level
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="justify-start text-xs h-9 bg-background/80 hover:bg-background"
+                  onClick={() => handleLaunchDemoModule("dossier")}
+                >
+                  <ShieldAlert className="w-3.5 h-3.5 mr-2 text-red-500 shrink-0" />
+                  4. Dossiês & Jurídico
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="justify-start text-xs h-9 bg-background/80 hover:bg-background sm:col-span-2"
+                  onClick={() => handleLaunchDemoModule("therapy")}
+                >
+                  <HeartPulse className="w-3.5 h-3.5 mr-2 text-emerald-500 shrink-0" />
+                  5. Prontuário & Notas Clínicas
+                </Button>
+              </div>
             </div>
 
             {/* Seção de Restaurar Backup - separada e secundária */}
@@ -445,7 +532,7 @@ export const LoginScreen = ({ onLogin, onCreateNew }: LoginScreenProps) => {
                   <Label htmlFor="workforce" className="flex-1 cursor-pointer font-normal flex items-center justify-between">
                     <div>
                       <div className="font-semibold text-sm">Gestão Regional & Lojas</div>
-                      <div className="text-xs text-muted-foreground">Lojas, equipe, fofocas/notas de campo e visitas</div>
+                      <div className="text-xs text-muted-foreground">Lojas, equipes, inteligência de clima e auditorias</div>
                     </div>
                     <Store className="w-4 h-4 text-primary ml-2 shrink-0" />
                   </Label>
